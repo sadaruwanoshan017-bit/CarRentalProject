@@ -5,7 +5,7 @@ import axios from 'axios';
 
 export const AuthContext = createContext();
 
-export const API_URL = Platform.OS === 'web' ? 'http://localhost:5000/api' : 'http://192.168.43.200:5000/api';
+export const API_URL = 'https://carrentalproject-production.up.railway.app/api';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
