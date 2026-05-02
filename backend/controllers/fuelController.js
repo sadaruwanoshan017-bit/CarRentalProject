@@ -9,6 +9,7 @@
 const FuelLog = require('../models/FuelLog');
 const Booking = require('../models/Booking');
 const Car = require('../models/Car');
+const PDFDocument = require('pdfkit');
 
 // -----------------------------------------------------------
 // @desc    Log a fuel top-up & upload receipt
@@ -171,6 +172,87 @@ exports.deleteFuelLog = async (req, res, next) => {
     await FuelLog.findByIdAndDelete(req.params.id);
 
     res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// -----------------------------------------------------------
+// @desc    Download fuel report as PDF
+// @route   GET /api/fuel/:bookingId/report
+// @access  Private (User/Admin)
+// -----------------------------------------------------------
+exports.downloadFuelReport = async (req, res, next) => {
+  try {
+    const bookingId = req.params.bookingId;
+    const logs = await FuelLog.find({ booking: bookingId }).populate('car', 'name licensePlate').sort({ createdAt: 1 });
+    
+    if (!logs || logs.length === 0) {
+      return res.status(404).json({ message: 'No fuel logs found for this booking to generate PDF.' });
+    }
+
+    const carName = logs[0].car ? logs[0].car.name : 'Vehicle';
+    
+    // Create a PDF Document
+    const doc = new PDFDocument({ margin: 50 });
+    
+    // Set headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=fuel_report_${bookingId}.pdf`);
+    
+    // Send directly to client
+    doc.pipe(res);
+    
+    // Title
+    doc.fontSize(20).text('Fuel Consumption Report', { align: 'center' });
+    doc.moveDown();
+    
+    doc.fontSize(12).text(`Booking Reference: ${bookingId}`);
+    doc.text(`Vehicle: ${carName}`);
+    doc.text(`Date Generated: ${new Date().toLocaleDateString()}`);
+    doc.moveDown(2);
+    
+    // Table Header
+    doc.fontSize(12).font('Helvetica-Bold');
+    doc.text('Date', 50, doc.y, { continued: true, width: 90 });
+    doc.text('Litres', 140, doc.y, { continued: true, width: 70 });
+    doc.text('Cost', 210, doc.y, { continued: true, width: 70 });
+    doc.text('Tank %', 280, doc.y, { continued: true, width: 70 });
+    doc.text('Station', 350, doc.y);
+    doc.moveDown(0.5);
+    
+    // Line
+    doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown(0.5);
+    
+    // Data
+    doc.font('Helvetica');
+    let totalCost = 0;
+    let totalLitres = 0;
+    
+    logs.forEach(log => {
+      const dateStr = new Date(log.createdAt).toLocaleDateString();
+      doc.text(dateStr, 50, doc.y, { continued: true, width: 90 });
+      doc.text(`${log.litresFilled || 0} L`, 140, doc.y, { continued: true, width: 70 });
+      doc.text(`$${log.costPaid || 0}`, 210, doc.y, { continued: true, width: 70 });
+      doc.text(`${log.tankPercentAfter || 0}%`, 280, doc.y, { continued: true, width: 70 });
+      doc.text(log.stationName || 'N/A', 350, doc.y);
+      doc.moveDown(0.5);
+      
+      totalCost += (log.costPaid || 0);
+      totalLitres += (log.litresFilled || 0);
+    });
+    
+    doc.moveDown();
+    doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown();
+    
+    // Summary
+    doc.font('Helvetica-Bold');
+    doc.text(`Total Litres: ${totalLitres.toFixed(1)} L`, 50, doc.y);
+    doc.text(`Total Cost Spent: $${totalCost.toFixed(2)}`, 50, doc.y);
+    
+    doc.end();
   } catch (error) {
     next(error);
   }
