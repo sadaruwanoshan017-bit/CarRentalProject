@@ -166,8 +166,10 @@ exports.approveBooking = async (req, res, next) => {
       booking.invoicePdfPath = pdfPathRel;
       await booking.save();
 
-      // Send approval email
-      await sendEmail(
+      res.status(200).json({ success: true, message: 'Booking approved. PDF generated.', data: booking });
+
+      // Send approval email asynchronously to avoid delaying response
+      sendEmail(
         booking.user.email,
         'DriveMate — Booking Approved! 🎉',
         `<h2>Your booking has been approved!</h2>
@@ -177,9 +179,7 @@ exports.approveBooking = async (req, res, next) => {
          <p>Total: <b>LKR ${booking.totalPrice}</b></p>
          <p>Your invoice PDF is ready for download in the app.</p>
          <p>— DriveMate Team</p>`
-      );
-
-      res.status(200).json({ success: true, message: 'Booking approved. PDF generated.', data: booking });
+      ).catch(err => console.error('Failed to send approval email:', err));
     });
   } catch (error) {
     next(error);
