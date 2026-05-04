@@ -10,6 +10,8 @@ const FuelLog = require('../models/FuelLog');
 const Booking = require('../models/Booking');
 const Car = require('../models/Car');
 const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
 
 // -----------------------------------------------------------
 // @desc    Log a fuel top-up & upload receipt
@@ -196,12 +198,18 @@ exports.downloadFuelReport = async (req, res, next) => {
     // Create a PDF Document
     const doc = new PDFDocument({ margin: 50 });
     
-    // Set headers
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=fuel_report_${bookingId}.pdf`);
-    
-    // Send directly to client
-    doc.pipe(res);
+    // Ensure reports directory exists
+    const pdfDir = path.join(__dirname, '..', 'uploads', 'reports');
+    if (!fs.existsSync(pdfDir)) {
+      fs.mkdirSync(pdfDir, { recursive: true });
+    }
+
+    const pdfFilename = `FuelReport-${bookingId}-${Date.now()}.pdf`;
+    const pdfPathAbs = path.join(pdfDir, pdfFilename);
+    const pdfPathRel = `uploads/reports/${pdfFilename}`;
+
+    const writeStream = fs.createWriteStream(pdfPathAbs);
+    doc.pipe(writeStream);
     
     // Title
     doc.fontSize(20).text('Fuel Consumption Report', { align: 'center' });
@@ -253,6 +261,11 @@ exports.downloadFuelReport = async (req, res, next) => {
     doc.text(`Total Cost Spent: $${totalCost.toFixed(2)}`, 50, doc.y);
     
     doc.end();
+
+    writeStream.on('finish', () => {
+      // Return the generic URL structure compatible with the frontend Linking
+      res.status(200).json({ success: true, pdfUrl: pdfPathRel });
+    });
   } catch (error) {
     next(error);
   }
